@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>Spring Boot Task Manager</title>
+        <style>
+            body { font-family: sans-serif; max-width: 500px; margin: 40px auto; padding: 0 20px; }
+            section { margin-bottom: 30px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+            .task-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; }
+            .task-actions button { margin-left: 5px; cursor: pointer; }
+            input[type="text"] { padding: 5px; width: 60%; }
+            button { padding: 5px 10px; }
+        </style>
+    </head>
+    <body>
+
+        <h2>My Task Manager</h2>
+        
+        <section>
+            <h3>Add New Task</h3>
+            <input type="text" id="taskInput" placeholder="What needs to be done?">
+            <button onclick="addTask()">Add Task</button>
+        </section>
+
+        <section>
+            <h3>Current Tasks (from MySQL)</h3>
+            <ul id="taskList" style="padding-left: 0;"></ul>
+        </section>
+
+        <script>
+            const API_URL = 'http://192.168.1.5:8080/api/tasks';
+
+            window.onload = fetchTasks;
+
+            // Streamlined central API wrapper to avoid writing duplicate fetch code
+            async function apiCall(url, method, body = null) {
+                try {
+                    const options = { method };
+                    if (body) {
+                        options.headers = { 'Content-Type': 'application/json' };
+                        options.body = JSON.stringify(body);
+                    }
+                    const response = await fetch(url, options);
+                    if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+                    return response.headers.get("content-type")?.includes("application/json") ? await response.json() : null;
+                } catch (error) {
+                    console.error("API Call Failed:", error);
+                    alert("Something went wrong with the database request.");
+                }
+            }
+
+            // READ: Fetch and dynamically build out items with inline action buttons
+            async function fetchTasks() {
+                const listElement = document.getElementById('taskList');
+                listElement.innerHTML = ''; 
+                
+                const tasks = await apiCall(API_URL, 'GET') || [];
+                
+                tasks.forEach(task => {
+                    const li = document.createElement('li');
+                    li.className = 'task-item';
+                    
+                    li.innerHTML = `
+                        <span><strong>[ID: ${task.id}]</strong> ${task.description}</span>
+                        <div class="task-actions">
+                            <button onclick="promptUpdate(${task.id}, '${task.description}')">✏️ Edit</button>
+                            <button onclick="deleteTask(${task.id})" style="color: red;">❌ Delete</button>
+                        </div>
+                    `;
+                    listElement.appendChild(li);
+                });
+            }
+
+            // CREATE: Simple item addition
+            async function addTask() {
+                const input = document.getElementById('taskInput');
+                if (!input.value.trim()) return;
+
+                await apiCall(API_URL, 'POST', { description: input.value });
+                input.value = ''; 
+                fetchTasks(); 
+            }
+
+            // UPDATE: Triggers a clean browser prompt instead of taking space with textboxes
+            async function promptUpdate(id, oldDescription) {
+                const newDescription = prompt("Update task description:", oldDescription);
+                if (newDescription === null || !newDescription.trim()) return; // Canceled or empty
+
+                await apiCall(`${API_URL}/${id}`, 'PUT', { description: newDescription });
+                fetchTasks();
+            }
+
+            // DELETE: Passes the ID automatically straight from the list button click
+            async function deleteTask(id) {
+                if (!confirm("Are you sure you want to delete this task?")) return;
+                
+                await apiCall(`${API_URL}/${id}`, 'DELETE');
+                fetchTasks(); 
+            }
+        </script>
+    </body>
+</html>
